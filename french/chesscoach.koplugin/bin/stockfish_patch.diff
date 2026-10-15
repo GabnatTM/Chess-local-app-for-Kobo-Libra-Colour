@@ -1,0 +1,16 @@
+diff --git a/src/uci.cpp b/src/uci.cpp
+index 8b35e6f..f61b2a7 100644
+--- a/src/uci.cpp
++++ b/src/uci.cpp
+@@ -204,7 +204,11 @@ void UCI::loop(int argc, char* argv[]) {
+ 
+   do {
+       if (argc == 1 && !getline(cin, cmd)) // Block here waiting for input or EOF
++      {
++          // ChessCoach: at end of input, let the current search finish first
++          Threads.main()->wait_for_search_finished();
+           cmd = "quit";
++      }
+ 
+       istringstream is(cmd);
+ 

@@ -1,0 +1,613 @@
+--[[
+  Le coach : classe les coups (comme sur chess.com) et explique
+  en français ce qu'un coup fait sur l'échiquier.
+]]
+
+local Chess = require("cc_chess")
+local AI = require("cc_ai")
+
+local Coach = {}
+
+---------------------------------------------------------------------------
+-- Catégories de coups (couleurs pastel)
+---------------------------------------------------------------------------
+
+Coach.CATEGORIES = {
+    brillant    = { label = "Brillant",          symbol = "!!", color = {104, 205, 198}, gray = 0xB8, rank = 1 },
+    super       = { label = "Très bon coup",     symbol = "!",  color = {137, 176, 230}, gray = 0xC0, rank = 2 },
+    meilleur    = { label = "Meilleur coup",     symbol = "★",  color = {150, 206, 138}, gray = 0xC8, rank = 3 },
+    excellent   = { label = "Excellent",         symbol = "✓",  color = {178, 218, 150}, gray = 0xD0, rank = 4 },
+    bon         = { label = "Bon coup",          symbol = "✓",  color = {205, 226, 180}, gray = 0xD8, rank = 5 },
+    imprecision = { label = "Imprécision",       symbol = "?!", color = {244, 222, 128}, gray = 0xD0, rank = 6 },
+    erreur      = { label = "Erreur",            symbol = "?",  color = {243, 182, 128}, gray = 0xB0, rank = 7 },
+    manque      = { label = "Coup manqué",       symbol = "✗",  color = {236, 160, 175}, gray = 0xA0, rank = 8 },
+    gaffe       = { label = "Gaffe",             symbol = "??", color = {228, 128, 128}, gray = 0x90, rank = 9 },
+}
+Coach.ORDER = { "brillant", "super", "meilleur", "excellent", "bon", "imprecision", "erreur", "manque", "gaffe" }
+
+-- Couleur des flèches
+Coach.BEST_ARROW = {120, 196, 120}
+
+---------------------------------------------------------------------------
+-- Noms des pièces
+---------------------------------------------------------------------------
+
+local NAMES = {
+    p = { "pion", "m" }, n = { "cavalier", "m" }, b = { "fou", "m" },
+    r = { "tour", "f" }, q = { "dame", "f" }, k = { "roi", "m" },
+}
+
+local sqName = Chess.sqName
+
+-- persp = "joueur" (le coup est le vôtre) ou "adversaire" (coup de l'IA)
+local function own(l, persp)
+    local n = NAMES[l][1]
+    if persp == "joueur" then return "votre " .. n end
+    return "son " .. n
+end
+
+local function enemy(l, persp)
+    local n, g = NAMES[l][1], NAMES[l][2]
+    if persp == "joueur" then
+        return (g == "f" and "la " or "le ") .. n .. " adverse"
+    end
+    return "votre " .. n
+end
+
+local function joinList(items)
+    if #items == 0 then return "" end
+    if #items == 1 then return items[1] end
+    return table.concat(items, ", ", 1, #items - 1) .. " et " .. items[#items]
+end
+Coach.joinList = joinList
+
+---------------------------------------------------------------------------
+-- Outils tactiques
+---------------------------------------------------------------------------
+
+-- Chances de gain (0..100) utilisées pour juger les coups :
+-- courbe un peu plus douce que celle de l'IA, proche des jugements de chess.com
+function Coach.win(cp)
+    if cp > 9000 then return 100 end
+    if cp < -9000 then return 0 end
+    return 50 + 50 * (2 / (1 + math.exp(-0.003 * cp)) - 1)
+end
+
+local function value(p)
+    return Chess.VALUES[p:lower()]
+end
+
+local function lowestAttacker(pos, sq, by)
+    local best
+    for _, s in ipairs(pos:attackersOf(sq, by)) do
+        local v = value(pos.board[s])
+        if pos.board[s]:lower() == "k" then v = 100 end
+        if not best or v < best then best = v end
+    end
+    return best
+end
+
+-- Une pièce est « en prise » si elle peut être prise avec profit
+local function isHanging(pos, sq)
+    local p = pos.board[sq]
+    if not p or p:lower() == "k" then return false end
+    local c = Chess.colorOf(p)
+    local them = Chess.other(c)
+    local att = lowestAttacker(pos, sq, them)
+    if not att then return false end
+    local defended = #pos:attackersOf(sq, c) > 0
+    if not defended then return true end
+    return att < value(p)
+end
+Coach.isHanging = isHanging
+
+local function hangingSet(pos, color)
+    local set = {}
+    for s = 0, 63 do
+        local p = pos.board[s]
+        if p and Chess.colorOf(p) == color and isHanging(pos, s) then set[s] = true end
+    end
+    return set
+end
+
+local function mobility(pos, sq)
+    local n = 0
+    local c = Chess.colorOf(pos.board[sq])
+    for _, s in ipairs(pos:attacksFrom(sq)) do
+        local p = pos.board[s]
+        if not p or Chess.colorOf(p) ~= c then n = n + 1 end
+    end
+    return n
+end
+
+-- Le coup est-il un sacrifice (on offre du matériel) ?
+function Coach.isSacrifice(pos, m)
+    if m.promo then return false end
+    local after = pos:makeMove(m)
+    local mv = value(m.piece)
+    if m.piece:lower() == "k" or mv < 3 then return false end
+    local gained = m.captured and value(m.captured) or 0
+    if mv - gained < 2 then return false end
+    local them = Chess.other(pos.turn)
+    local att = lowestAttacker(after, m.to, them)
+    if not att then return false end
+    local defended = #after:attackersOf(m.to, pos.turn) > 0
+    return (not defended) or att < mv
+end
+
+local CENTER = { [27] = true, [28] = true, [35] = true, [36] = true }
+local CENTER_PAWN = { [26] = true, [27] = true, [28] = true, [34] = true, [35] = true, [36] = true }
+
+local function isPassed(pos, sq)
+    local p = pos.board[sq]
+    local c = Chess.colorOf(p)
+    local enemyPawn = c == "w" and "p" or "P"
+    local f, r = Chess.fileOf(sq), Chess.rankOf(sq)
+    for df = -1, 1 do
+        local ff = f + df
+        if ff >= 0 and ff <= 7 then
+            if c == "w" then
+                for rr = r + 1, 7 do if pos.board[rr * 8 + ff] == enemyPawn then return false end end
+            else
+                for rr = r - 1, 0, -1 do if pos.board[rr * 8 + ff] == enemyPawn then return false end end
+            end
+        end
+    end
+    return true
+end
+
+local function fileStatus(pos, file, color)
+    local ownPawn = color == "w" and "P" or "p"
+    local enemyPawn = color == "w" and "p" or "P"
+    local hasOwn, hasEnemy = false, false
+    for r = 0, 7 do
+        local p = pos.board[r * 8 + file]
+        if p == ownPawn then hasOwn = true end
+        if p == enemyPawn then hasEnemy = true end
+    end
+    if not hasOwn and not hasEnemy then return "ouverte" end
+    if not hasOwn then return "semi-ouverte" end
+    return nil
+end
+
+---------------------------------------------------------------------------
+-- Ce que fait un coup
+---------------------------------------------------------------------------
+
+--[[
+  Renvoie une liste de phrases (verbes à la 3e personne) décrivant le coup.
+  warnings : défauts du coup (pièces laissées sans protection…)
+]]
+function Coach.describe(pos, m, persp)
+    local phrases, warnings = {}, {}
+    local us = pos.turn
+    local them = Chess.other(us)
+    local after = pos:makeMove(m)
+    local l = m.piece:lower()
+    local opening = pos.fullmove <= 12
+
+    -- échec et mat
+    if after:inCheck() and #after:legalMoves() == 0 then
+        return { "fait échec et mat" }, {}
+    end
+
+    if m.castle then
+        phrases[#phrases + 1] = "met le roi à l'abri en roquant et prépare l'entrée en jeu de la tour"
+    end
+
+    -- prise
+    if m.captured then
+        local cl = m.captured:lower()
+        local recapt = lowestAttacker(after, m.to, them)
+        local gain = value(m.captured) - (recapt and value(m.piece) or 0)
+        local target = enemy(cl, persp) .. " en " .. sqName(m.to)
+        if m.enpassant then target = enemy("p", persp) .. " en passant" end
+        if not recapt or gain > 0 then
+            phrases[#phrases + 1] = "gagne " .. target
+        elseif gain == 0 then
+            phrases[#phrases + 1] = "échange " .. own(l, persp) .. " contre " .. target
+        else
+            phrases[#phrases + 1] = "prend " .. target
+        end
+    end
+
+    if m.promo then
+        phrases[#phrases + 1] = "transforme le pion en " .. NAMES[m.promo][1]
+    end
+
+    local gives_check = after:inCheck()
+    if gives_check then
+        phrases[#phrases + 1] = persp == "joueur" and "donne échec au roi adverse" or "met votre roi en échec"
+    end
+
+    -- développement et centre
+    if opening and (l == "n" or l == "b") and not m.captured then
+        local back = us == "w" and 0 or 7
+        if Chess.rankOf(m.from) == back then
+            local f = Chess.fileOf(m.to)
+            if l == "n" and (f == 0 or f == 7) then
+                phrases[#phrases + 1] = "développe " .. own(l, persp)
+                    .. " au bord de l'échiquier, où il contrôle peu de cases"
+            elseif f >= 2 and f <= 5 or l == "b" then
+                phrases[#phrases + 1] = "développe " .. own(l, persp) .. " vers une case active"
+            else
+                phrases[#phrases + 1] = "développe " .. own(l, persp)
+            end
+        end
+    end
+    if l == "p" and CENTER_PAWN[m.to] and pos.fullmove <= 15 and not m.captured then
+        phrases[#phrases + 1] = "prend de la place au centre"
+    end
+
+    -- ouvre des lignes pour d'autres pièces
+    if not m.castle then
+        local bestGain, bestSq = 0, nil
+        for s = 0, 63 do
+            local p = pos.board[s]
+            if p and s ~= m.from and Chess.colorOf(p) == us then
+                local pl = p:lower()
+                if pl == "b" or pl == "r" or pl == "q" then
+                    local g = mobility(after, s) - mobility(pos, s)
+                    if g > bestGain then bestGain, bestSq = g, s end
+                end
+            end
+        end
+        if bestGain >= 3 then
+            local pl = pos.board[bestSq]:lower()
+            local kind = pl == "b" and "une diagonale" or (pl == "r" and "une ligne" or "des lignes")
+            phrases[#phrases + 1] = "ouvre " .. kind .. " pour " .. own(pl, persp) .. " en " .. sqName(bestSq)
+        end
+    end
+
+    -- contrôle du centre par la pièce jouée
+    if l ~= "p" and l ~= "k" then
+        local before_c, after_c = 0, 0
+        for _, s in ipairs(pos:attacksFrom(m.from)) do if CENTER[s] then before_c = before_c + 1 end end
+        for _, s in ipairs(after:attacksFrom(m.to)) do if CENTER[s] then after_c = after_c + 1 end end
+        if after_c - before_c >= 2 and pos.fullmove <= 25 then
+            phrases[#phrases + 1] = "renforce le contrôle des cases centrales"
+        end
+    end
+
+    -- tour sur colonne ouverte
+    if l == "r" and not m.castle then
+        local st = fileStatus(after, Chess.fileOf(m.to), us)
+        local st0 = fileStatus(pos, Chess.fileOf(m.from), us)
+        if st and (Chess.fileOf(m.to) ~= Chess.fileOf(m.from) or not st0) then
+            phrases[#phrases + 1] = "place " .. own("r", persp) .. " sur une colonne " .. st .. ", où elle devient active"
+        end
+    end
+
+    -- pion passé
+    if l == "p" and not m.promo and isPassed(after, m.to) then
+        local r = Chess.rankOf(m.to)
+        local adv = us == "w" and r or (7 - r)
+        if adv >= 4 then
+            phrases[#phrases + 1] = "pousse un pion passé vers la promotion"
+        end
+    end
+
+    -- mise à l'abri / protection
+    local hangBefore = hangingSet(pos, us)
+    local hangAfter = hangingSet(after, us)
+    if hangBefore[m.from] and not hangAfter[m.to] and not m.captured then
+        phrases[#phrases + 1] = "met " .. own(l, persp) .. " à l'abri"
+    end
+    for s in pairs(hangBefore) do
+        if s ~= m.from and not hangAfter[s] and after.board[s] then
+            phrases[#phrases + 1] = "protège " .. own(after.board[s]:lower(), persp) .. " en " .. sqName(s)
+            break
+        end
+    end
+
+    -- menaces créées par la pièce jouée
+    local targets = {}
+    local hangThemBefore = hangingSet(pos, them)
+    for _, s in ipairs(after:attacksFrom(m.to)) do
+        local p = after.board[s]
+        if p and Chess.colorOf(p) == them then
+            local pl = p:lower()
+            if pl == "k" then
+                -- déjà mentionné via l'échec
+            elseif (isHanging(after, s) and not hangThemBefore[s]) or (pl == "q" and l ~= "q") then
+                targets[#targets + 1] = { sq = s, l = pl, v = value(p) }
+            end
+        end
+    end
+    table.sort(targets, function(a, b) return a.v > b.v end)
+    local bigTargets = 0
+    for _, t in ipairs(targets) do if t.v >= 3 then bigTargets = bigTargets + 1 end end
+    if (bigTargets >= 2) or (gives_check and bigTargets >= 1) then
+        local names = {}
+        if gives_check then names[#names + 1] = persp == "joueur" and "le roi adverse" or "votre roi" end
+        for _, t in ipairs(targets) do
+            if t.v >= 3 and #names < 3 then names[#names + 1] = enemy(t.l, persp) .. " en " .. sqName(t.sq) end
+        end
+        phrases[#phrases + 1] = "fait une fourchette : il attaque à la fois " .. joinList(names)
+    elseif #targets >= 1 then
+        local t = targets[1]
+        phrases[#phrases + 1] = "menace " .. enemy(t.l, persp) .. " en " .. sqName(t.sq)
+    end
+
+    -- clouage
+    if l == "b" or l == "r" or l == "q" then
+        local dirs = {}
+        if l ~= "r" then for _, d in ipairs({{1,1},{1,-1},{-1,1},{-1,-1}}) do dirs[#dirs + 1] = d end end
+        if l ~= "b" then for _, d in ipairs({{1,0},{-1,0},{0,1},{0,-1}}) do dirs[#dirs + 1] = d end end
+        for _, d in ipairs(dirs) do
+            local s = Chess.offset(m.to, d[1], d[2])
+            local first
+            while s do
+                local p = after.board[s]
+                if p then
+                    if not first then
+                        if Chess.colorOf(p) ~= them or p:lower() == "k" then break end
+                        first = { sq = s, l = p:lower() }
+                    else
+                        if Chess.colorOf(p) == them and (p:lower() == "k" or (p:lower() == "q" and first.l ~= "q"))
+                            and value(m.piece) <= 9 then
+                            local behind = p:lower() == "k" and (persp == "joueur" and "son roi" or "votre roi")
+                                or (persp == "joueur" and "sa dame" or "votre dame")
+                            phrases[#phrases + 1] = "cloue " .. enemy(first.l, persp) .. " en " .. sqName(first.sq)
+                                .. " sur " .. behind
+                        end
+                        break
+                    end
+                end
+                s = Chess.offset(s, d[1], d[2])
+            end
+        end
+    end
+
+    -- défauts : pièces laissées en prise
+    if hangAfter[m.to] and not (m.captured and value(m.captured) >= value(m.piece)) then
+        warnings[#warnings + 1] = "laisse " .. own(after.board[m.to]:lower(), persp) .. " en " .. sqName(m.to)
+            .. " sans protection suffisante"
+    end
+    for s in pairs(hangAfter) do
+        if s ~= m.to and hangBefore[s] and s ~= m.from then
+            local pl = after.board[s]:lower()
+            warnings[#warnings + 1] = "ne règle pas la menace sur " .. own(pl, persp) .. " en " .. sqName(s)
+            break
+        end
+    end
+    for s in pairs(hangAfter) do
+        if s ~= m.to and not hangBefore[s] then
+            warnings[#warnings + 1] = "découvre " .. own(after.board[s]:lower(), persp) .. " en " .. sqName(s)
+                .. ", qui n'est plus protégé" .. (NAMES[after.board[s]:lower()][2] == "f" and "e" or "")
+            break
+        end
+    end
+
+    local trivial = false
+    if #phrases == 0 then
+        trivial = true
+        if l == "k" then
+            phrases[#phrases + 1] = "déplace le roi"
+        elseif l == "p" then
+            phrases[#phrases + 1] = "avance un pion pour gagner de l'espace"
+        else
+            phrases[#phrases + 1] = "déplace " .. own(l, persp) .. " en " .. sqName(m.to)
+        end
+    end
+    return phrases, warnings, trivial
+end
+
+---------------------------------------------------------------------------
+-- Classement d'un coup
+---------------------------------------------------------------------------
+
+--[[
+  before : analyse de la position AVANT le coup (le joueur au trait), MultiPV >= 2
+  after_cp : évaluation après le coup, du point de vue du joueur
+  Renvoie l'identifiant de catégorie et les chances de gain avant/après.
+]]
+function Coach.classify(pos, m, before, after_cp)
+    local uci = Chess.moveToUci(m)
+    local best = before[1]
+    if not best then return "bon", 50, 50 end
+    local winB = Coach.win(best.cp)
+    local winA = Coach.win(after_cp)
+    local loss = math.max(0, winB - winA)
+    local nlegal = #pos:legalMoves()
+
+    if uci == best.move or loss < 0.3 then
+        if Coach.isSacrifice(pos, m) and winA >= 50 and winB < 97 then
+            return "brillant", winB, winA
+        end
+        -- « Très bon coup » : seul bon coup, et pas une simple reprise évidente
+        local obvious = m.captured and isHanging(pos, m.to)
+        if nlegal > 1 and before[2] and uci == best.move and not obvious then
+            local w2 = Coach.win(before[2].cp)
+            if winB - w2 >= 15 and winB >= 40 then return "super", winB, winA end
+        end
+        return "meilleur", winB, winA
+    end
+    if loss <= 2 then
+        if Coach.isSacrifice(pos, m) and winA >= 55 and winB < 97 then return "brillant", winB, winA end
+        return "excellent", winB, winA
+    end
+    if loss <= 5 then return "bon", winB, winA end
+    if loss > 10 and winB >= 70 and winA >= 35 then return "manque", winB, winA end
+    if loss <= 10 then return "imprecision", winB, winA end
+    if loss <= 20 then return "erreur", winB, winA end
+    return "gaffe", winB, winA
+end
+
+-- Précision d'un coup (0..100), formule inspirée de Lichess
+function Coach.accuracy(winB, winA)
+    local d = math.max(0, winB - winA)
+    local a = 103.1668 * math.exp(-0.04354 * d) - 3.1669
+    if a > 100 then a = 100 elseif a < 0 then a = 0 end
+    return a
+end
+
+---------------------------------------------------------------------------
+-- Texte du coach
+---------------------------------------------------------------------------
+
+local function fmtEval(cp)
+    if cp >= 9000 then
+        return "mat en " .. math.floor((10000 - cp) / 10 + 0.5) .. " pour vous"
+    elseif cp <= -9000 then
+        return "mat en " .. math.floor((cp + 10000) / 10 + 0.5) .. " pour l'adversaire"
+    end
+    local v = cp / 100
+    local s = string.format("%+.1f", v):gsub("%.", ",")
+    return s
+end
+Coach.fmtEval = fmtEval
+
+function Coach.evalSentence(cp)
+    if cp >= 9000 then return "Vous avez un mat forcé." end
+    if cp <= -9000 then return "L'adversaire a un mat forcé." end
+    local a = math.abs(cp)
+    local who = cp > 0 and "vous" or "l'adversaire"
+    if a < 40 then return "La position est équilibrée." end
+    if a < 120 then return "Léger avantage pour " .. who .. "." end
+    if a < 300 then return "Net avantage pour " .. who .. "." end
+    return "Avantage décisif pour " .. who .. "."
+end
+
+local VERDICT = {
+    brillant = "Un sacrifice brillant : vous donnez du matériel pour un gain plus important !",
+    super = "Le seul bon coup de la position, bien trouvé !",
+    meilleur = "C'est exactement le coup que je recommandais.",
+    excellent = "Excellent, presque aussi fort que le meilleur coup.",
+    bon = "Un coup correct, mais il existait plus précis.",
+    imprecision = "Une imprécision : vous perdez un peu de terrain.",
+    erreur = "Une erreur : l'équilibre de la partie bascule.",
+    manque = "Occasion manquée : vous pouviez prendre un gros avantage.",
+    gaffe = "Une gaffe : ce coup gâche la position.",
+}
+
+-- Joue une suite de coups uci et renvoie leurs notations (pour « l'idée » du coup)
+local function pvSan(pos, pv, n)
+    local res = {}
+    local p = pos
+    for i = 1, math.min(n, #pv) do
+        local m = p:findUci(pv[i])
+        if not m then break end
+        res[#res + 1] = { san = p:san(m), m = m, pos = p }
+        p = p:makeMove(m)
+    end
+    return res
+end
+
+local function capitalize(s)
+    return s:sub(1, 1):upper() .. s:sub(2)
+end
+
+--[[
+  Construit l'explication complète.
+  info = {
+    pos = position avant le coup, move = coup joué, cls = catégorie,
+    before = lignes d'analyse avant, after_lines = analyse après (adversaire au trait),
+    after_cp = éval après (point de vue joueur)
+  }
+  Renvoie { title, paragraphs = {...} }
+]]
+function Coach.explain(info)
+    local pos, m, cls = info.pos, info.move, info.cls
+    local cat = Coach.CATEGORIES[cls]
+    local san = pos:san(m)
+    local paras = {}
+
+    paras[#paras + 1] = VERDICT[cls]
+
+    -- ce que fait votre coup
+    local ph, warn = Coach.describe(pos, m, "joueur")
+    local s = "Votre coup " .. san .. " " .. joinList(ph)
+    if #warn > 0 and Coach.CATEGORIES[cls].rank >= 5 then
+        s = s .. ", mais il " .. joinList(warn)
+    end
+    paras[#paras + 1] = s .. "."
+
+    -- la réponse de l'adversaire (si le coup est mauvais)
+    local after = pos:makeMove(m)
+    local reply = info.after_lines and info.after_lines[1]
+    if reply and Coach.CATEGORIES[cls].rank >= 6 then
+        local rm = after:findUci(reply.move)
+        if rm then
+            local rph, _, trivial = Coach.describe(after, rm, "adversaire")
+            local t
+            if not trivial then
+                t = "Le problème : l'adversaire peut répondre " .. after:san(rm) .. ", qui " .. joinList(rph) .. "."
+            end
+            if reply.mate and reply.mate > 0 then
+                t = (t and (t .. " ") or "") .. "L'adversaire a maintenant un mat en " .. reply.mate .. " !"
+            end
+            if t then paras[#paras + 1] = t end
+        end
+    end
+
+    -- le meilleur coup
+    local best = info.before and info.before[1]
+    if best and best.move ~= Chess.moveToUci(m) then
+        local bm = pos:findUci(best.move)
+        if bm then
+            local bph = Coach.describe(pos, bm, "joueur")
+            local t = "Le meilleur coup était " .. pos:san(bm) .. " (flèche verte) : il " .. joinList(bph) .. "."
+            local line = pvSan(pos, best.pv or {}, 3)
+            if #line >= 3 then
+                local ideaPh = Coach.describe(line[3].pos, line[3].m, "joueur")
+                t = t .. " L'idée : si l'adversaire répond " .. line[2].san .. ", vous continuez avec "
+                    .. line[3].san .. ", qui " .. joinList(ideaPh) .. "."
+            end
+            paras[#paras + 1] = t
+        end
+    elseif best then
+        local line = pvSan(pos, best.pv or {}, 3)
+        if #line >= 3 then
+            local ideaPh = Coach.describe(line[3].pos, line[3].m, "joueur")
+            paras[#paras + 1] = "La suite logique : après " .. line[2].san .. ", vous pourrez jouer "
+                .. line[3].san .. ", qui " .. joinList(ideaPh) .. "."
+        end
+    end
+
+    if info.after_cp then
+        paras[#paras + 1] = "Évaluation : " .. fmtEval(info.after_cp) .. ". " .. Coach.evalSentence(info.after_cp)
+    end
+
+    return { title = cat.label, symbol = cat.symbol, paragraphs = paras, capitalize = capitalize }
+end
+
+-- Indice pour la position actuelle (sans jouer).
+-- Renvoie un indice discret (étape 1) et l'explication complète (étape 2).
+function Coach.hint(pos, lines)
+    local best = lines and lines[1]
+    if not best then return nil end
+    local bm = pos:findUci(best.move)
+    if not bm then return nil end
+    local ph = Coach.describe(pos, bm, "joueur")
+    local first = ph[1] or ""
+    local theme
+    if first:find("échec et mat", 1, true) then theme = "Il y a un mat en un coup !"
+    elseif first:find("^gagne") then theme = "Il y a du matériel à gagner."
+    elseif first:find("fourchette", 1, true) then theme = "Cherchez une double attaque."
+    elseif first:find("échec", 1, true) then theme = "Pensez à attaquer le roi adverse."
+    elseif first:find("à l'abri", 1, true) and not bm.castle then theme = "Une de vos pièces est menacée."
+    elseif bm.castle then theme = "Pensez à la sécurité de votre roi."
+    elseif first:find("développe", 1, true) then theme = "Pensez au développement de vos pièces."
+    elseif first:find("centre", 1, true) then theme = "Pensez au centre."
+    elseif first:find("menace", 1, true) or first:find("cloue", 1, true) then theme = "Vous pouvez créer une menace."
+    end
+    local l = bm.piece:lower()
+    local vague = "Regardez du côté de votre " .. NAMES[l][1] .. " en " .. sqName(bm.from) .. "."
+    if theme then vague = vague .. " " .. theme end
+    local full = "Le coup conseillé est " .. pos:san(bm) .. " : il " .. joinList(ph) .. "."
+    return vague, full
+end
+
+-- Phrase simple décrivant un coup (pour revoir les coups sans annotation)
+-- persp = "joueur" (votre coup) ou "adversaire"
+function Coach.moveSentence(pos, m, persp)
+    local san = pos:san(m)
+    local ph = Coach.describe(pos, m, persp)
+    if persp == "joueur" then
+        return "Votre coup " .. san .. " " .. joinList(ph) .. "."
+    end
+    return "L'adversaire a joué " .. san .. " : ce coup " .. joinList(ph) .. "."
+end
+
+return Coach
