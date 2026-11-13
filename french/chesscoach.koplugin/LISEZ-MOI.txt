@@ -5,77 +5,92 @@ INSTALLATION / MISE À JOUR
 1. Branchez la liseuse à l'ordinateur avec le câble USB.
 2. Ouvrez le lecteur « KOBOeReader », puis le dossier caché :
       .adds/koreader/plugins/
-   (Mac : Cmd + Maj + . pour voir les dossiers cachés.
-    Windows : Affichage > Afficher > Éléments masqués.)
-3. Supprimez l'ancien dossier « chesscoach.koplugin » s'il existe,
-   puis copiez le nouveau à sa place. Votre Elo et votre historique sont conservés.
+   (Windows : Affichage > Afficher > Éléments masqués.)
+3. Remplacez le dossier « chesscoach.koplugin » par le nouveau.
+   Votre Elo, vos tournois, vos parties et vos trophées sont conservés
+   (sauvegarde : .adds/koreader/settings/chesscoach.lua).
 4. Éjectez la liseuse proprement, puis redémarrez KOReader.
 5. Dans KOReader : menu du haut > Outils > « Le Circuit (échecs) ».
 
 LE MENU DU JEU
 - Tournois      : le circuit des 10 capitales (le mode principal).
 - Coach         : partie tranquille contre l'IA, avec le coach.
-- Partie libre  : blitz 3 + 5, rapide 10 + 5 ou sans pendule, pour s'entraîner.
+- Partie libre  : blitz 3 + 5, rapide 10 + 5 ou sans pendule.
+- Duel local    : à deux, face à face sur la même liseuse.
+- En ligne      : contre de vrais joueurs, sur Lichess (Wi-Fi nécessaire).
+- Problèmes     : les 5334 problèmes du livre de László Polgár.
 - Trophées      : votre étagère.
 - Profil        : votre Elo, sa courbe et vos dernières parties.
 
-MODE COACH
-- L'écran reste épuré : aucune annotation pendant que vous jouez.
-- Touchez l'ampoule quand vous voulez l'avis du coach : l'échiquier montre
-  votre dernier coup (flèche de couleur), le meilleur coup (flèche verte),
-  le jugement façon chess.com (!!, !, ★, ?!, ?, ✗, ??) et l'explication en français.
-  ‹ › font alors défiler les coups commentés. Touchez l'échiquier pour revenir au jeu.
-- ‹ et › (ou les boutons de page de la liseuse, ou un glissement du doigt)
-  reviennent en arrière et en avant dans la partie, coups de l'IA compris.
-  Rejouez le même coup : la partie continue exactement comme avant (l'IA
-  rejoue la même réponse). Jouez un autre coup : la partie repart de là.
-  Appui long sur ‹ ou › : début ou fin de la partie.
-- « Éval » affiche ou cache la barre d'évaluation sous l'échiquier.
-- « Indice » : un indice discret, puis le coup si vous touchez encore.
-- Une partie où vous avez repris des coups n'est pas comptée pour l'Elo.
-- Menu > « Analyser une partie jouée » : toutes vos parties terminées (tournois,
-  parties libres, coach) sont listées avec le mode, les deux joueurs et le score.
-  Touchez-en une : le coach l'analyse coup par coup (ampoule, flèches, ‹ ›).
-  Le bilan de fin de partie propose aussi « Analyser avec le coach ».
+PROBLÈMES (NOUVEAU)
+- Les 5334 problèmes de « Chess: 5334 Problems, Combinations and Games »
+  (László Polgár, le père de Judit, Susan et Sofia), en 10 chapitres :
+  mat en 1, mat en 2, combinaisons en 2 et 3 coups, 600 parties miniatures,
+  finales, combinaisons des sœurs Polgár…
+- Touchez une pièce puis sa case d'arrivée ; l'adversaire répond tout seul.
+  Pour un mat, un autre coup que celui du livre est accepté s'il mate aussi
+  dans le bon nombre de coups (Stockfish vérifie et défend).
+- « Indice » : la pièce à jouer, puis le coup. « Solution » : la solution
+  du livre. « Réessayer » : revenir avant votre dernier coup.
+- ‹ › ou les boutons de page : problème précédent / suivant.
+- Dans la liste des chapitres : touchez un chapitre pour son premier problème
+  non résolu, appui long pour repartir du début.
 
-TOURNOIS
-- 10 opens (Bruxelles, Paris, Londres, Madrid, Rome, Berlin, Budapest,
-  Reykjavik, Buenos Aires, Tokyo) : 8 joueurs, 6 rondes, cadence 10 + 5,
-  victoire 1 point, nulle ½, défaite 0. Classement entre chaque ronde.
-  Le premier gagne le trophée. Un tournoi à la fois ; vous pouvez retenter
-  ceux que vous n'avez pas gagnés.
-- Vos adversaires sont des joueurs inventés, proches de votre Elo, chacun avec
-  sa personnalité (attaquant, positionnel, solide, tacticien, grand réfléchisseur,
-  blitzeur…). Ils réfléchissent à un rythme humain, jouent moins bien quand
-  leur pendule baisse, et peuvent accepter une nulle ou abandonner.
-- Coups anticipés : pendant que l'adversaire réfléchit, touchez une de vos pièces
-  puis sa case d'arrivée ; les deux cases passent en bleu et le coup est joué
-  dès que l'adversaire a joué (s'il est encore possible). Touchez ailleurs pour l'annuler.
-- Chaque ville a son propre trophée (atome, flûte, coupe, plateau, laurier,
-  pion géant, coupe couronnée, cristal, étoile, médaille).
-- Pas de coach ni de retour en arrière pendant ces parties. Vous pouvez quitter :
-  la partie et les pendules sont mises en pause et sauvegardées.
-- La saison dure 365 jours réels à partir de votre premier tournoi :
-  10 mois pour gagner les 10 trophées (compte à rebours dans le circuit).
-- Les 10 trophées gagnés dans les temps débloquent le tournoi des candidats
-  (6 rondes, 15 + 10, adversaires un peu plus forts), rejouable jusqu'au
-  championnat du monde.
-- Au 364e jour : le championnat du monde, un match de 13 parties en 15 + 10
-  contre le champion en titre (départage en blitz en cas d'égalité, le champion
-  garde son titre si le départage est nul). Si vous n'êtes pas qualifié, vous
-  découvrez le résultat du match entre le champion et le vainqueur des candidats.
-  Ensuite, une nouvelle saison peut commencer.
+EN LIGNE · LICHESS (NOUVEAU)
+- Jouez contre de vrais joueurs de lichess.org avec l'échiquier et la pendule de
+  l'application. Cadences : 10+0, 10+5, 15+10, 30+0, 30+20 (Lichess n'autorise
+  pas le blitz pour les applications externes). Partie classée ou amicale.
+- À faire une fois : sur lichess.org (ordinateur ou téléphone), ouvrez
+  lichess.org/account/oauth/token/create, cochez seulement « Jouer des parties
+  avec l'API échiquier », créez la clé, puis copiez-la dans un fichier texte
+  lichess_token.txt placé dans .adds/koreader/settings (ou tapez-la dans l'appli).
+  Le mot de passe n'est jamais demandé ; la clé se supprime sur lichess.org.
+- Pendant une partie en ligne, le coach et Stockfish sont coupés (règle de Lichess).
+- Si le Wi-Fi coupe, l'application se reconnecte toute seule et reprend la partie.
+
+DUEL LOCAL (NOUVEAU)
+- Deux joueurs sur la même liseuse, posée à plat entre eux : les Blancs en bas,
+  les Noirs en haut. Les pièces noires et la pendule des Noirs sont tournées
+  vers le joueur d'en face, pour que chacun lise tout à l'endroit.
+- Pendules : 3 + 2, 5 + 5, 10 + 5 ou 15 + 10. Elle démarre au premier coup des Blancs.
+- Chaque joueur a ses boutons : Proposer nulle, Abandon, Pause (Pause permet
+  aussi d'annuler le dernier coup ou de quitter). La partie est gardée : on peut
+  la reprendre plus tard. Ne compte pas pour votre Elo.
+
+MES ERREURS À RETRAVAILLER (NOUVEAU)
+- Dans le coach (Menu > « Mes erreurs à retravailler ») ou en haut de l'écran
+  Problèmes : le coach analyse vos parties terminées et garde vos erreurs (?),
+  coups manqués (✗) et gaffes (??).
+- Chaque erreur devient un exercice : la position juste avant votre coup, à vous
+  de trouver mieux. Le meilleur coup est accepté, ou un coup presque aussi bon.
+- « Indice », « Solution », puis « Jouer d'ici contre l'IA » pour continuer la
+  partie depuis cette position (partie d'entraînement, non classée).
+- L'analyse prend environ une minute par partie : elle se fait pendant que
+  l'écran « Mes erreurs » est ouvert, et n'est faite qu'une fois.
+
+REJOUER UNE POSITION CONTRE L'IA « HUMAINE » (NOUVEAU)
+- À chaque coup, Stockfish propose ses 10 meilleurs coups. Un modèle appris sur
+  36 000 positions de vraies parties Lichess (6 tranches, de 400 à 2400 Elo)
+  donne à chacun la probabilité qu'un joueur de ce niveau le joue, selon ce que
+  le coup coûte et ce qu'un humain voit : prise, échec, recapture, roque,
+  développement, menace créée, pièce laissée en prise… L'IA tire son coup
+  selon ces probabilités : elle ne joue donc que des coups envisagés par
+  Stockfish, avec les préférences et les erreurs des vrais joueurs.
+- Le modèle devine le coup réellement joué par l'humain dans 44 à 50 % des
+  positions (Stockfish seul : 35 à 44 %).
+- L'Elo affiché suit l'échelle de chess.com (un « 1300 » imite un joueur
+  d'environ 1600 sur Lichess). L'écart entre niveaux a été réglé par des
+  matchs simulés.
+- En ouverture : livre des coups joués par les vrais joueurs de chaque niveau.
+- À la pendule : gestion du temps mesurée sur Lichess.
 
 FIN DE PARTIE
 - Le bilan montre le résultat, l'évolution de votre Elo, la précision (coach)
-  et le graphique de la partie : blanc vers le haut quand les blancs mènent,
-  noir vers le bas quand ce sont les noirs. Touchez le graphique pour revoir
-  ce moment de la partie.
+  et le graphique de la partie. Touchez le graphique pour revoir ce moment.
 
-Sauvegarde : .adds/koreader/settings/chesscoach.lua
-
-À PROPOS DU MOTEUR
+À PROPOS
 Le dossier « bin » contient Stockfish 11 (logiciel libre, licence GPL v3,
-https://github.com/official-stockfish/Stockfish, version « sf_11 »),
-compilé pour la Kobo avec une petite modification (stockfish_patch.diff).
+https://github.com/official-stockfish/Stockfish), compilé pour la Kobo avec une
+petite modification (stockfish_patch.diff). Parties d'entraînement de l'IA :
+base de données ouverte de Lichess (lichess.org). Problèmes : László Polgár.
 Les noms des joueurs du circuit sont inventés.

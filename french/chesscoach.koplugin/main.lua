@@ -93,6 +93,32 @@ function ChessCoach:getApp()
         clock = monotonic,
         schedule = function(seconds, fn) UIManager:scheduleIn(seconds, fn) end,
         rnd = math.random,
+        -- jeu en ligne (Lichess)
+        tokenFile = DataStorage:getSettingsDir() .. "/lichess_token.txt",
+        cafile = (function()
+            for _, p in ipairs({ "data/ca-bundle.crt", DataStorage:getDataDir() .. "/data/ca-bundle.crt" }) do
+                local f = io.open(p, "r")
+                if f then f:close() return p end
+            end
+        end)(),
+        whenOnline = function(fn)
+            local ok, NetworkMgr = pcall(require, "ui/network/manager")
+            if ok and NetworkMgr and NetworkMgr.runWhenOnline then
+                NetworkMgr:runWhenOnline(fn)
+            else
+                fn()
+            end
+        end,
+        -- progression de l'ancienne appli de problèmes Polgar (si elle existe)
+        loadPolgar = function()
+            local path = DataStorage:getSettingsDir() .. "/echecs_polgar.lua"
+            local f = io.open(path, "r")
+            if not f then return nil end
+            f:close()
+            local ok, old = pcall(LuaSettings.open, LuaSettings, path)
+            if not ok or not old then return nil end
+            return { solved = old:readSetting("solved"), current = old:readSetting("current") }
+        end,
     }
     return shared.app
 end

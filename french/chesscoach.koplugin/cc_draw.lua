@@ -98,13 +98,30 @@ function Draw.faceForPixels(name, px)
 end
 
 -- Dessine un caractère centré sur (cx, cy)
-function Draw.glyphCentered(bb, face, codepoint, cx, cy, color, refcode)
+-- Glyphes retournés (tête en bas) gardés en mémoire
+local FLIPPED = setmetatable({}, { __mode = "k" })
+
+-- flip = true : glyphe tourné de 180° autour de son centre (duel local : pièces de l'autre joueur)
+function Draw.glyphCentered(bb, face, codepoint, cx, cy, color, refcode, flip)
     local ref = RenderText:getGlyph(face, refcode or codepoint)
     local g = (refcode and refcode ~= codepoint) and RenderText:getGlyph(face, codepoint) or ref
     local rw, rh = ref.bb:getWidth(), ref.bb:getHeight()
     local penx = math.floor(cx - (ref.l + rw / 2) + 0.5)
     local baseline = math.floor(cy + (ref.t - rh / 2) + 0.5)
-    bb:colorblitFrom(g.bb, penx + g.l, baseline - g.t, 0, 0, g.bb:getWidth(), g.bb:getHeight(), color)
+    local gw, gh = g.bb:getWidth(), g.bb:getHeight()
+    local gx, gy = penx + g.l, baseline - g.t
+    if not flip then
+        bb:colorblitFrom(g.bb, gx, gy, 0, 0, gw, gh, color)
+        return
+    end
+    local rot = FLIPPED[g.bb]
+    if not rot then
+        rot = g.bb:rotatedCopy(180)
+        FLIPPED[g.bb] = rot
+    end
+    local fx = math.floor(2 * cx - gx - gw + 0.5)
+    local fy = math.floor(2 * cy - gy - gh + 0.5)
+    bb:colorblitFrom(rot, fx, fy, 0, 0, gw, gh, color)
 end
 
 -- Texte centré (peut contenir plusieurs caractères)

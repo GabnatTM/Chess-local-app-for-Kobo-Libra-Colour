@@ -295,6 +295,7 @@ end
 
 function Match:_truncate(n)
     local g = self.g
+    g.ai_expect, g.ai_tilt = nil, nil
     for i = #g.moves, n + 1, -1 do
         local k = self.positions[i + 1]:key()
         self.keycount[k] = (self.keycount[k] or 1) - 1
@@ -384,11 +385,61 @@ function Match:_storeLines(pos, lines, keep)
     end
 end
 
+-- Temps de calcul de Stockfish (il évalue 10 coups : il lui faut un minimum pour voir les tactiques)
 local function engineTime(eff)
-    if eff < 1200 then return 350 end
-    if eff < 1800 then return 600 end
-    if eff < 2200 then return 900 end
+    if eff < 1800 then return 700 end
+    if eff < 2200 then return 1000 end
     return 1300
+end
+
+-- Forme du jour de l'adversaire (tirée une fois par partie)
+function Match:form()
+    local g = self.g
+    if g.form == nil then
+        g.form = self:isCoach() and 0 or AI.dailyForm(self.rnd)
+    end
+    return g.form
+end
+
+-- Ce que voit un humain avant de jouer : recapture évidente, cadeau de l'adversaire,
+-- gaffe qu'il vient lui-même de faire, pendule…
+function Match:humanContext(pos, lines)
+    local g = self.g
+    local ctx = { speed = AI.speedOf(g.tc) }
+    if g.tc and g.clock then ctx.clock_bucket = AI.clockBucket(g.tc, g.clock[pos.turn]) end
+    local n = #g.moves
+    if n >= 1 then
+        local prevPos = self.positions[n]
+        local last = prevPos and prevPos:findUci(g.moves[n])
+        if last then ctx.last_to = last.to end
+        if last and last.captured then
+            for _, mv in ipairs(pos:legalMoves()) do
+                if mv.to == last.to and mv.captured then ctx.recapture = true break end
+            end
+        end
+    end
+    -- l'adversaire (le joueur) vient-il de faire une grosse erreur ?
+    if g.ai_expect and lines[1] then
+        local now = AI.winPercent(lines[1].cp)
+        if now - AI.winPercent(g.ai_expect) >= 15 and now >= 60 then ctx.punish = true end
+    end
+    ctx.tilt = g.ai_tilt or 0
+    if ctx.tilt < 0.15 then ctx.tilt = 0 end
+    return ctx
+end
+
+-- Après le choix : on retient l'éval attendue et si l'IA vient de gaffer
+function Match:_afterChoice(lines, m, info)
+    local g = self.g
+    if not m then return end
+    local u = Chess.moveToUci(m)
+    -- éval attendue (du point de vue de l'IA) si le coup fait partie des lignes de Stockfish
+    g.ai_expect = nil
+    for _, l in ipairs(lines or {}) do
+        if l.move == u then g.ai_expect = l.cp break end
+    end
+    local loss = info and info.loss or 0
+    if loss >= 20 then g.ai_tilt = 1 else g.ai_tilt = (g.ai_tilt or 0) * 0.55 end
 end
 
 function Match:_aiTurn()
@@ -412,7 +463,10 @@ function Match:_aiTurn()
             local uci = g.ai_cache[key]
             if uci then m = pos:findUci(uci) end
             if not m then
-                m = AI.chooseMove(pos, lines, opp.elo, style, self.rnd)
+                local info
+                m, _, info = AI.chooseMove(pos, lines, AI.effectiveElo(opp.elo, nil, nil, nil, nil, self:form()),
+                    style, self.rnd, self:humanContext(pos, lines))
+                self:_afterChoice(lines, m, info)
                 if m then g.ai_cache[key] = Chess.moveToUci(m) end
             end
             self:_aiPlay(m)
@@ -435,7 +489,7 @@ function Match:_aiTurn()
     local timed = self:isTimed()
     local aiColor = pos.turn
     local remaining = timed and g.clock[aiColor] or nil
-    local eff0 = AI.effectiveElo(opp.elo, g.tc, persona, remaining)
+    local eff0 = AI.effectiveElo(opp.elo, g.tc, persona, remaining, nil, self:form())
     local started = self.now()
     self.engine:analyse(pos:fen(), AI.multiPV(eff0), engineTime(eff0), function(lines)
         if gen ~= self.gen then return end
@@ -452,9 +506,11 @@ function Match:_aiTurn()
             self:_finish(g.player_color == "w" and "1-0" or "0-1", "abandon de l'adversaire")
             return
         end
-        local m = AI.chooseMove(pos, lines, eff0, style, self.rnd)
+        local hctx = self:humanContext(pos, lines)
+        local m, _, info = AI.chooseMove(pos, lines, eff0, style, self.rnd, hctx)
         if not m then return end
         if not timed then
+            self:_afterChoice(lines, m, info)
             local delay = 0.6 + self.rnd() * 1.4 - (self.now() - started)
             if delay < 0.05 then
                 self:_aiPlay(m)
@@ -469,16 +525,17 @@ function Match:_aiTurn()
         local recapture = prev and prev.captured and m.captured and m.to == prev.to
         local think, budget = AI.humanThinkTime{
             persona = persona, remaining = g.clock[aiColor], opp_remaining = g.clock[g.player_color],
-            tc = g.tc, fullmove = pos.fullmove, nlegal = #pos:legalMoves(), lines = lines,
+            tc = g.tc, fullmove = pos.fullmove, nlegal = #pos:legalMoves(), lines = lines, elo = eff0,
             recapture = recapture, opp_last_think = g.think[#g.moves], rnd = self.rnd,
         }
+        -- coup joué très vite (instinct) : un peu plus d'erreurs, comme un humain
         local rushed = think / math.max(0.5, budget)
-        if rushed < 0.7 then
-            local eff1 = AI.effectiveElo(opp.elo, g.tc, persona, g.clock[aiColor], rushed)
-            if eff1 < eff0 - 30 then
-                m = AI.chooseMove(pos, lines, eff1, style, self.rnd) or m
-            end
+        if rushed < 0.35 and not recapture and info and info.kind == "humain" then
+            hctx.rushed = 1.3
+            local m2, _, info2 = AI.chooseMove(pos, lines, eff0, style, self.rnd, hctx)
+            if m2 then m, info = m2, info2 end
         end
+        self:_afterChoice(lines, m, info)
         local wait = think - (g.turn_spent or 0)
         if wait <= 0.05 then
             self:_aiPlay(m)

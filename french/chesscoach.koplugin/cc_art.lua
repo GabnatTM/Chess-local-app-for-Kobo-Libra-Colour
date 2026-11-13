@@ -293,6 +293,26 @@ function Art.iconBulb(bb, x, y, s)
     R(bb, cx - r * 0.4, y + s * 0.78, r * 0.8, s * 0.06, 0x22)
 end
 
+-- Deux rois face à face (duel local)
+function Art.iconDuel(bb, x, y, s)
+    local UI = require("cc_ui")
+    local face = UI.pieceFace(math.floor(s * 0.72))
+    Draw.glyphCentered(bb, face, 0x265A, x + s * 0.28, y + s * 0.64, UI.WHITE, 0x2654)
+    Draw.glyphCentered(bb, face, 0x2654, x + s * 0.28, y + s * 0.64, UI.BLACK)
+    Draw.glyphCentered(bb, face, 0x265A, x + s * 0.72, y + s * 0.36, UI.BLACK, nil, true)
+end
+
+-- Globe (jeu en ligne)
+function Art.iconGlobe(bb, x, y, s)
+    local cx, cy, rad = x + s / 2, y + s / 2, s * 0.42
+    local th = math.max(2, math.floor(s * 0.06))
+    Draw.ring(bb, cx, cy, rad, th, nil, 0x22)
+    Draw.line(bb, cx - rad, cy, cx + rad, cy, th, nil, 0x22)
+    Draw.line(bb, cx, cy - rad, cx, cy + rad, th, nil, 0x22)
+    Draw.line(bb, cx - rad * 0.85, cy - rad * 0.5, cx + rad * 0.85, cy - rad * 0.5, math.max(1, th - 1), nil, 0x22)
+    Draw.line(bb, cx - rad * 0.85, cy + rad * 0.5, cx + rad * 0.85, cy + rad * 0.5, math.max(1, th - 1), nil, 0x22)
+end
+
 function Art.iconClock(bb, x, y, s)
     local cx, cy, r = x + s / 2, y + s / 2, s * 0.4
     Draw.ring(bb, math.floor(cx), math.floor(cy), math.floor(r), math.max(2, math.floor(s * 0.07)), nil, 0x22)
@@ -307,6 +327,18 @@ function Art.iconChart(bb, x, y, s)
     for i = 1, #pts - 1 do
         Draw.line(bb, x + s * pts[i][1], y + s * pts[i][2], x + s * pts[i + 1][1], y + s * pts[i + 1][2], th, nil, 0x22)
     end
+end
+
+-- Petit échiquier 3 × 3 avec une étoile : les problèmes
+function Art.iconPuzzle(bb, x, y, s)
+    local c = s * 0.8 / 3
+    local x0, y0 = x + s * 0.1, y + s * 0.1
+    for i = 0, 2 do
+        for j = 0, 2 do
+            if (i + j) % 2 == 0 then R(bb, x0 + i * c, y0 + j * c, c, c, 0x22) end
+        end
+    end
+    Draw.frame(bb, math.floor(x0), math.floor(y0), math.floor(c * 3), math.floor(c * 3), math.max(2, math.floor(s * 0.05)), nil, 0x22)
 end
 
 function Art.iconBuilding(bb, x, y, s)

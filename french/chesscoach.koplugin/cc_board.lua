@@ -16,11 +16,36 @@ local DARK = 0xC2
 local LIGHT_LAST = 0xE2
 local DARK_LAST = 0xA4
 
+--[[
+  Thèmes d'échiquier (comme sur chess.com) : cases claires, foncées, et dernier coup.
+  Sur écran noir et blanc, tous les thèmes reviennent au gris d'origine.
+]]
+local THEMES = {
+    { id = "gris",    name = "Gris (classique)", light = nil, dark = nil },
+    { id = "vert",    name = "Vert",      light = { 238, 238, 210 }, dark = { 118, 150, 86 },
+      light_last = { 246, 246, 130 }, dark_last = { 186, 202, 68 } },
+    { id = "bois",    name = "Bois",      light = { 240, 217, 181 }, dark = { 181, 136, 99 },
+      light_last = { 206, 210, 107 }, dark_last = { 170, 162, 58 } },
+    { id = "bleu",    name = "Bleu",      light = { 222, 227, 230 }, dark = { 140, 162, 173 },
+      light_last = { 195, 216, 135 }, dark_last = { 152, 177, 96 } },
+    { id = "glace",   name = "Glace",     light = { 228, 242, 246 }, dark = { 122, 174, 190 },
+      light_last = { 246, 236, 150 }, dark_last = { 200, 196, 96 } },
+    { id = "violet",  name = "Violet",    light = { 239, 233, 247 }, dark = { 150, 125, 185 },
+      light_last = { 240, 222, 150 }, dark_last = { 196, 164, 110 } },
+    { id = "corail",  name = "Corail",    light = { 247, 228, 214 }, dark = { 210, 128, 112 },
+      light_last = { 246, 230, 140 }, dark_last = { 214, 178, 92 } },
+    { id = "sable",   name = "Sable",     light = { 244, 236, 214 }, dark = { 198, 170, 120 },
+      light_last = { 226, 230, 140 }, dark_last = { 178, 180, 86 } },
+    { id = "ardoise", name = "Ardoise",   light = { 214, 219, 224 }, dark = { 112, 128, 144 },
+      light_last = { 190, 210, 150 }, dark_last = { 120, 150, 100 } },
+}
+
 -- Glyphes Unicode : contours (blancs) et pleins (noirs)
 local OUTLINE = { k = 0x2654, q = 0x2655, r = 0x2656, b = 0x2657, n = 0x2658, p = 0x2659 }
 local FILLED  = { k = 0x265A, q = 0x265B, r = 0x265C, b = 0x265D, n = 0x265E, p = 0x265F }
 
 local Board = InputContainer:extend{
+    theme = nil,          -- id du thème (nil = Board.current)
     size = 800,
     flipped = false,
     pos = nil,
@@ -32,6 +57,14 @@ local Board = InputContainer:extend{
     marks = nil,          -- { { sq, rgb, gray } } cercles de couleur
     on_tap = nil,         -- function(case)
 }
+
+Board.THEMES = THEMES
+Board.current = "gris"
+
+function Board.themeById(id)
+    for _, t in ipairs(THEMES) do if t.id == id then return t end end
+    return THEMES[1]
+end
 
 function Board:init()
     self.sq = math.floor(self.size / 8)
@@ -99,15 +132,20 @@ function Board:paintTo(bb, x, y)
     local pos = self.pos
 
     -- cases
+    local th = Board.themeById(self.theme or Board.current)
     for s = 0, 63 do
         local ox, oy = self:squareOrigin(s)
         local light = (Chess.fileOf(s) + Chess.rankOf(s)) % 2 == 1
         local shade = light and LIGHT or DARK
+        local rgb = th.light and (light and th.light or th.dark)
         if self.last_move and (s == self.last_move.from or s == self.last_move.to) then
             shade = light and LIGHT_LAST or DARK_LAST
+            rgb = th.light and (light and th.light_last or th.dark_last)
         end
         if self.premove and (s == self.premove.from or s == self.premove.to) then
             Draw.rect(bb, x + ox, y + oy, sq, sq, light and { 190, 214, 240 } or { 150, 184, 222 }, light and 0xB8 or 0x90)
+        elseif rgb then
+            Draw.rect(bb, x + ox, y + oy, sq, sq, rgb, shade)
         else
             bb:paintRect(x + ox, y + oy, sq, sq, Blitbuffer.Color8(shade))
         end
@@ -152,13 +190,16 @@ function Board:paintTo(bb, x, y)
             if p then
                 local cx, cy = self:squareCenter(s)
                 local l = p:lower()
-                local px, py = x + cx, y + cy + sq * 0.02
-                if p == p:upper() then
+                local white = p == p:upper()
+                -- duel local : les pièces d'un camp sont tournées vers l'autre joueur
+                local flip = self.flip_all or (self.flip_color and ((white and "w" or "b") == self.flip_color))
+                local px, py = x + cx, y + cy + (flip and -sq * 0.02 or sq * 0.02)
+                if white then
                     -- pièce blanche : silhouette blanche + contour noir
-                    Draw.glyphCentered(bb, self.piece_face, FILLED[l], px, py, Blitbuffer.COLOR_WHITE, OUTLINE[l])
-                    Draw.glyphCentered(bb, self.piece_face, OUTLINE[l], px, py, Blitbuffer.COLOR_BLACK)
+                    Draw.glyphCentered(bb, self.piece_face, FILLED[l], px, py, Blitbuffer.COLOR_WHITE, OUTLINE[l], flip)
+                    Draw.glyphCentered(bb, self.piece_face, OUTLINE[l], px, py, Blitbuffer.COLOR_BLACK, nil, flip)
                 else
-                    Draw.glyphCentered(bb, self.piece_face, FILLED[l], px, py, Blitbuffer.COLOR_BLACK)
+                    Draw.glyphCentered(bb, self.piece_face, FILLED[l], px, py, Blitbuffer.COLOR_BLACK, nil, flip)
                 end
             end
         end

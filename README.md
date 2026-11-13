@@ -10,9 +10,11 @@ The game is available in two languages, in two separate plugin folders:
 | English | [`english/chesscircuit.koplugin`](english/chesscircuit.koplugin) | Tools → **Chess Circuit** | `koreader/settings/chesscircuit.lua` |
 | French | [`french/chesscoach.koplugin`](french/chesscoach.koplugin) | Tools → **Le Circuit (échecs)** | `koreader/settings/chesscoach.lua` |
 
-Both versions have exactly the same features; only the interface and the coach's explanations differ
-(the French version also uses French piece letters: R, D, T, F, C). They use different folder and save-file
-names, so both can be installed side by side.
+The French version is the most recent one: on top of everything below, it has **5334 puzzles**,
+**mistake training**, a **two-player mode**, **online play on Lichess**, **board themes** and a new
+**human-like AI** (see [What's new in the French version](#whats-new-in-the-french-version)).
+The English version has not been updated yet. The two versions use different folder and save-file
+names, so both can be installed side by side (the French version also uses French piece letters: R, D, T, F, C).
 
 It bundles the Stockfish engine and adds three ways to play:
 
@@ -33,13 +35,42 @@ French version:
 |---|---|---|
 | ![Menu principal](screenshots/fr_main_menu.png) | ![Coach](screenshots/fr_coach.png) | ![Étagère des trophées](screenshots/fr_trophy_shelf.png) |
 
+## What's new in the French version
+
+| | | |
+|---|---|---|
+| ![Menu](screenshots/fr_menu.png) | ![Problems](screenshots/fr_problemes.png) | ![A problem](screenshots/fr_probleme.png) |
+| ![Board themes](screenshots/fr_themes.png) | ![Two-player duel](screenshots/fr_duel.png) | ![Online on Lichess](screenshots/fr_en_ligne.png) |
+
+- **Problems**: the 5334 positions of László Polgár's *Chess: 5334 Problems, Combinations and Games*
+  (mates in 1, 2 and 3, combinations, miniature games, endgames), in 10 chapters, with progress, streaks,
+  hints and solutions. Another move than the book's is accepted if Stockfish confirms it mates just as fast.
+  This public version contains the positions and the solutions only, not the book's commentary.
+- **Mistakes to rework**: the coach scans your finished games and turns your mistakes, misses and blunders
+  into exercises (find the better move from the position just before), then lets you play on against the AI from there.
+- **Replay from any position**: while reviewing a game, play on against the AI from the position on screen (unrated).
+- **Duel local**: two players face to face on the same reader, with 3+2, 5+5, 10+5 or 15+10 clocks.
+  The pieces turn to face the player whose turn it is (or stay fixed, the far side upside down).
+- **Online on Lichess** ("En ligne"): play real opponents on lichess.org with this app's board and clock, through
+  Lichess's official Board API (rapid and classical time controls, rated or casual). It needs Wi-Fi and a personal
+  Lichess API token with the "Play games with the board API" permission, saved in `koreader/settings/lichess_token.txt`
+  or typed in the app. Your password is never used. The coach and Stockfish are switched off during online games, as Lichess requires.
+- **Board themes**: grey, green, wood, blue, ice, purple, coral, sand and slate.
+- **Human-like AI**: Stockfish proposes its 10 best moves, and a model trained on 36,000 positions from real
+  Lichess games (six rating bands, 400 to 2400) gives each move the probability that a human of that level plays it,
+  from what the move costs and what a human notices (captures, checks, recaptures, castling, development, threats,
+  hanging pieces…). On held-out positions it predicts the move the human actually played 44–50 % of the time
+  (Stockfish's top move alone: 35–44 %). Openings come from a book of the moves real players of each level play.
+  Displayed ratings follow the chess.com scale.
+
 ## Features
 
 ### Requirements
 
 - An e-reader running KOReader. It was designed for the **Kobo Libra Colour**; other Kobo devices with an ARM processor should work.
   Colours are pastel on colour screens and switch to shades of grey on black and white screens.
-- Nothing else: no internet connection, no account. Everything runs on the device.
+- Nothing else: no internet connection, no account. Everything runs on the device
+  (only the optional online mode of the French version uses Wi-Fi and a Lichess account).
 
 ### Coach mode
 - The board stays clean while you play; nothing pops up after your moves.
@@ -127,6 +158,18 @@ The two folders contain the same files:
 | `cc_screen.lua`, `cc_menus.lua`, `cc_ui.lua`, `cc_board.lua`, `cc_art.lua`, `cc_draw.lua`, `cc_lamp.lua` | Screens and hand-drawn graphics |
 | `cc_app.lua`, `main.lua` | Glue code and KOReader plugin entry point |
 
+The French version adds:
+
+| File | Role |
+|---|---|
+| `cc_model.lua`, `cc_model_w.lua` | Human move model and its trained weights |
+| `cc_book.lua`, `cc_human.lua` | Opening book and clock-use statistics from Lichess games |
+| `cc_problems.lua`, `cc_problems_data.lua` | Problems section and its 5334 positions |
+| `cc_mistakes.lua` | Exercises built from your own mistakes |
+| `cc_duel.lua` | Two-player mode on one reader |
+| `cc_lichess.lua` | Online play through the Lichess Board API |
+
+The training data for the AI comes from the [Lichess](https://lichess.org) game database (games are public domain, CC0).
 All players and their names are made up. Any resemblance to real people is coincidental.
 
 ## License

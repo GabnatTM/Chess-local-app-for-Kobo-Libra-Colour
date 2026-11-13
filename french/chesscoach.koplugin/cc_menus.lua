@@ -11,6 +11,7 @@ local UIManager = require("ui/uimanager")
 
 local AI = require("cc_ai")
 local Art = require("cc_art")
+local Board = require("cc_board")
 local Career = require("cc_career")
 local Coach = require("cc_coach")
 local Draw = require("cc_draw")
@@ -97,7 +98,7 @@ function Menus.Main:draw(bb)
     y = y + s(128)
     UI.textCentered(bb, UI.face(34, true), "Le Circuit", W / 2, y)
     y = y + UI.lineHeight(UI.face(34, true))
-    UI.textCentered(bb, UI.face(15), "Échecs · coach · tournois", W / 2, y, UI.DIM)
+    UI.textCentered(bb, UI.face(15), "Échecs · coach · tournois · problèmes", W / 2, y, UI.DIM)
     y = y + s(34)
 
     -- carte joueur
@@ -115,24 +116,27 @@ function Menus.Main:draw(bb)
         if left > 0 then info = info .. " · " .. plural(math.ceil(left / Career.MONTH_DAYS), "mois", "mois") .. " restants" end
     end
     UI.text(bb, UI.face(14), info, cx + s(16), y + s(32), UI.DIM)
-    y = y + ch + s(26)
+    y = y + ch + s(16)
 
     local entries = {
         { "Tournois", "Le circuit des 10 capitales", function() app:openHub() end, Art.iconBuilding },
-        { "Coach", "Jouez ou analysez vos parties avec le coach", function() app:openCoach() end, Art.iconBulb },
+        { "Coach", "Jouer, analyser, retravailler vos erreurs", function() app:openCoach() end, Art.iconBulb },
         { "Partie libre", "Blitz, rapide ou sans pendule", function() app:openFree() end, Art.iconClock },
+        { "Duel local", "À deux, face à face sur la même liseuse", function() app:openDuel() end, Art.iconDuel },
+        { "En ligne", "Contre de vrais joueurs, sur Lichess", function() app:openOnline() end, Art.iconGlobe },
+        { "Problèmes", "5334 problèmes et combinaisons (Polgár)", function() app:openProblems() end, Art.iconPuzzle },
         { "Trophées", "Votre étagère", function() app:openShelf() end, function(b, x, yy, sz)
             Art.trophy(b, x, yy, sz, sz, UI.GOLD, false) end },
         { "Profil", "Classement et historique", function() app:openProfile() end, Art.iconChart },
     }
-    local rowh = s(70)
+    local rowh = s(54)
     local rx, rw = cx, cw
     for i, e in ipairs(entries) do
         local ry = y + (i - 1) * rowh
-        local isz = s(40)
+        local isz = s(38)
         e[4](bb, rx + s(8), ry + (rowh - isz) / 2, isz)
-        UI.text(bb, UI.face(20, true), e[1], rx + s(66), ry + s(10))
-        UI.text(bb, UI.face(14), e[2], rx + s(66), ry + s(40), UI.DIM)
+        UI.text(bb, UI.face(19, true), e[1], rx + s(66), ry + s(6))
+        UI.text(bb, UI.face(13), e[2], rx + s(66), ry + s(34), UI.DIM)
         UI.textRight(bb, UI.face(22), "›", rx + rw - s(8), ry + s(18), UI.GRAY)
         if i < #entries then bb:paintRect(rx + s(66), ry + rowh - 1, rw - s(66), 1, UI.LIGHT) end
         self:region(rx, ry, rw, rowh, e[3])
@@ -669,6 +673,10 @@ function Menus.Profile:draw(bb)
         })
     end)
 
+    local tw = s(170)
+    UI.pill(bb, W - m - tw, s(94), tw, s(34), "Échiquier…", UI.face(14))
+    self:region(W - m - tw, s(94), tw, s(34), function() app:openThemes(function() self:refresh() end) end)
+
     -- courbe d'Elo
     local hist = {}
     for _, h in ipairs(app.data.history) do
@@ -785,6 +793,74 @@ end
 
 function Menus.Archive:onSwipe(dir)
     if dir == "west" then self:onNextKey() elseif dir == "east" then self:onPrevKey() end
+end
+
+---------------------------------------------------------------------------
+-- Choix du thème de l'échiquier
+---------------------------------------------------------------------------
+
+Menus.Themes = UI.Canvas:extend{ app = nil, onChange = nil }
+
+function Menus.Themes:draw(bb)
+    local app = self.app
+    local W = self.W
+    local m = s(18)
+    local y = self:header(bb, "Thème de l'échiquier", "Retour", function() self:close() end)
+    y = y + s(14)
+    local cur = app.profile.board_theme or "gris"
+    local cols = 3
+    local gap = s(16)
+    local cw = math.floor((W - 2 * m - (cols - 1) * gap) / cols)
+    local sq = math.floor((cw - s(12)) / 4)
+    local bw = sq * 4
+    local ch = bw + s(56)
+    local face = UI.pieceFace(math.floor(sq * 0.85))
+    local function piece(code, cx, cy, white)
+        if white then
+            Draw.glyphCentered(bb, face, code + 6, cx, cy, UI.WHITE, code)
+            Draw.glyphCentered(bb, face, code, cx, cy, UI.BLACK)
+        else
+            Draw.glyphCentered(bb, face, code + 6, cx, cy, UI.BLACK)
+        end
+    end
+    for i, t in ipairs(Board.THEMES) do
+        local c = (i - 1) % cols
+        local r = math.floor((i - 1) / cols)
+        local x = m + c * (cw + gap)
+        local yy = y + r * (ch + gap)
+        local bx = x + math.floor((cw - bw) / 2)
+        local by = yy + s(6)
+        for f = 0, 3 do
+            for k = 0, 3 do
+                local light = (f + k) % 2 == 0
+                local last = (f == 1 and k == 2) or (f == 2 and k == 1)
+                local rgb = t.light and (light and (last and t.light_last or t.light) or (last and t.dark_last or t.dark))
+                local gray = light and (last and 0xE2 or 0xFF) or (last and 0xA4 or 0xC2)
+                Draw.rect(bb, bx + f * sq, by + k * sq, sq, sq, rgb, gray)
+            end
+        end
+        piece(0x2658, bx + sq * 1.5, by + sq * 2.5, true)   -- cavalier blanc
+        piece(0x2659, bx + sq * 2.5, by + sq * 1.5, false)  -- pion noir (plein)
+        piece(0x2656, bx + sq * 0.5, by + sq * 3.5, true)
+        piece(0x2654, bx + sq * 3.5, by + sq * 0.5, false)
+        bb:paintBorder(bx, by, bw, bw, 1, UI.BLACK)
+        local sel = t.id == cur
+        UI.textCentered(bb, UI.face(15, sel), t.name .. (sel and "  ✓" or ""), x + cw / 2, by + bw + s(8))
+        if sel then bb:paintBorder(x, yy, cw, ch, s(3), UI.BLACK, s(10)) end
+        self:region(x, yy, cw, ch, function()
+            app:setBoardTheme(t.id)
+            if self.onChange then self.onChange() end
+            self:refresh()
+        end)
+    end
+    local rows = math.ceil(#Board.THEMES / cols)
+    y = y + rows * (ch + gap) + s(6)
+    local note = Draw.colorEnabled() and "Touchez un échiquier pour l'utiliser dans toutes vos parties et les problèmes."
+        or "L'écran est réglé en noir et blanc : les couleurs n'apparaîtront qu'avec l'affichage en couleur."
+    for _, l in ipairs(UI.wrap(UI.face(14), note, W - 2 * m)) do
+        UI.text(bb, UI.face(14), l, m, y, UI.DIM)
+        y = y + UI.lineHeight(UI.face(14))
+    end
 end
 
 ---------------------------------------------------------------------------
