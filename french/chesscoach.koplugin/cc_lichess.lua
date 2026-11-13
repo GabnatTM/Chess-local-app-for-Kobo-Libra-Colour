@@ -976,6 +976,14 @@ function Lichess.screens()
         self.clock_rect[color] = { x = m, y = cy, w = cw, h = bh }
         local x = m + cw + s(12)
         local f = UI.face(14)
+        -- différence de matériel : « +3 » à côté de la pendule du camp qui a plus de matériel
+        local pos = g:pos()
+        local diff = pos:material(color) - pos:material(color == "w" and "b" or "w")
+        if diff > 0 then
+            local df = UI.face(18, true)
+            local dw = UI.text(bb, df, "+" .. diff, x, cy + (bh - UI.lineHeight(df)) / 2 + s(2))
+            x = x + dw + s(12)
+        end
 
         local items = {}
         local label
