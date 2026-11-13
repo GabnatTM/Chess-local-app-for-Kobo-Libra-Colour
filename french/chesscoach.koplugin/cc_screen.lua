@@ -41,8 +41,9 @@ function GameScreen:setup()
     self.eval_h = s(20)
     self.tool_h = s(42)
     local rows = self.named and 2 * self.row_h or self.row_h
-    local panel_min = self.coach and s(125) or s(70)
-    local bs = math.min(self.W - 2 * self.mg, self.H - rows - self.eval_h - self.tool_h - panel_min - 2 * self.mg)
+    local panel_min = s(64)
+    local bs = math.min(self.W, self.H - rows - self.eval_h - self.tool_h - panel_min)
+    bs = bs - bs % 8
     self.board_full = Board:new{ size = bs }
     -- échiquier plus petit quand le coach parle, pour laisser de la place au texte
     self.board_small = Board:new{ size = math.floor(bs * 0.8) }
@@ -384,7 +385,7 @@ function GameScreen:draw(bb)
     local W, mg = self.W, self.mg
     if self.coach_ply and self.coach_ply > #g.moves then self.coach_ply = #g.moves end
     if self.mode == "coach" and #g.moves == 0 then self.mode = "live" end
-    local small = self.mode == "coach" or self.mode == "hint"
+    local small = false   -- l'échiquier garde toujours sa taille maximale ; le texte passe en pages
     self.board = small and self.board_small or self.board_full
     self:syncBoard()
     local y = 0

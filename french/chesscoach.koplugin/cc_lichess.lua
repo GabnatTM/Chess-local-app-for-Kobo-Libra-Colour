@@ -71,7 +71,7 @@ end
 ---------------------------------------------------------------------------
 
 -- Renvoie : code HTTP (ou nil), texte de la réponse ou message d'erreur
-function Lichess.request(method, path, token, body)
+function Lichess.request(method, path, token, body, ctype)
     local socket = require("socket")
     local ssl = require("ssl")
     local sock = socket.tcp()
@@ -89,7 +89,7 @@ function Lichess.request(method, path, token, body)
         "User-Agent: LeCircuit-KOReader", "Connection: close" }
     if token then req[#req + 1] = "Authorization: Bearer " .. token end
     if body then
-        req[#req + 1] = "Content-Type: application/x-www-form-urlencoded"
+        req[#req + 1] = "Content-Type: " .. (ctype or "application/x-www-form-urlencoded")
         req[#req + 1] = "Content-Length: " .. #body
     elseif method == "POST" then
         req[#req + 1] = "Content-Length: 0"
@@ -156,14 +156,24 @@ function Keep:close()
 end
 
 -- Une requête sur la connexion gardée ; une seule nouvelle tentative si elle a été coupée
-function Keep:post(path)
+function Keep:post(path) return self:send("POST", path) end
+
+function Keep:send(method, path, body, ctype)
     for attempt = 1, 2 do
         local ok, err = self:open()
         if not ok then return nil, "connexion impossible (" .. err .. ")" end
         local s = self.sock
-        local req = "POST " .. path .. " HTTP/1.1\r\nHost: " .. Lichess.HOST
+        local req = method .. " " .. path .. " HTTP/1.1\r\nHost: " .. Lichess.HOST
             .. "\r\nUser-Agent: LeCircuit-KOReader\r\nAccept: application/json\r\nConnection: keep-alive"
-            .. "\r\nAuthorization: Bearer " .. self.token .. "\r\nContent-Length: 0\r\n\r\n"
+            .. (self.token and ("\r\nAuthorization: Bearer " .. self.token) or "")
+        if body then
+            req = req .. "\r\nContent-Type: " .. (ctype or "application/x-www-form-urlencoded")
+                .. "\r\nContent-Length: " .. #body .. "\r\n\r\n" .. body
+        elseif method == "POST" then
+            req = req .. "\r\nContent-Length: 0\r\n\r\n"
+        else
+            req = req .. "\r\n\r\n"
+        end
         local sent = s:send(req)
         local status = sent and s:receive("*l")
         local code = status and tonumber(status:match("^HTTP/%d%.%d (%d+)"))
@@ -227,7 +237,7 @@ function Stream.open(method, path, token, body)
     local req = { method .. " " .. path .. " HTTP/1.1", "Host: " .. Lichess.HOST, "Accept: application/x-ndjson",
         "User-Agent: LeCircuit-KOReader", "Authorization: Bearer " .. token }
     if body then
-        req[#req + 1] = "Content-Type: application/x-www-form-urlencoded"
+        req[#req + 1] = "Content-Type: " .. (ctype or "application/x-www-form-urlencoded")
         req[#req + 1] = "Content-Length: " .. #body
     end
     s:settimeout(Lichess.TIMEOUT)
@@ -879,6 +889,10 @@ function Lichess.screens()
         local lw = UI.textWidth(UI.face(14), "Changer de clé Lichess") + s(30)
         UI.pill(bb, m, y, lw, s(34), "Changer de clé Lichess", UI.face(14))
         self:region(m, y, lw, s(34), function() self:askToken() end)
+        local pl = "Problèmes par thème ›"
+        local pw2 = UI.textWidth(UI.face(14), pl) + s(30)
+        UI.pill(bb, W - m - pw2, y, pw2, s(34), pl, UI.face(14))
+        self:region(W - m - pw2, y, pw2, s(34), function() app:openLPuzzles() end)
     end
 
     -------------------------------------------------------------------

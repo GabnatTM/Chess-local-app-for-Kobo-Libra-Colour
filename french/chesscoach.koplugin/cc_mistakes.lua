@@ -371,8 +371,9 @@ function Mistakes.screens()
         self.mg = s(6)
         self.tool_h = s(46)
         local head = s(40) + s(30)
-        local panel = s(170)
-        local bs = math.min(self.W - 2 * self.mg, self.H - head - self.tool_h - panel)
+        local panel = s(64)
+        local bs = math.min(self.W, self.H - head - self.tool_h - panel)
+        bs = bs - bs % 8
         self.board = Board:new{ size = bs }
         self:load(self.index)
     end
@@ -503,13 +504,9 @@ function Mistakes.screens()
             local bm = ex:bestMove()
             if bm then text = text .. "\n\nLe bon coup : " .. pos:san(bm) .. ". " .. Coach.moveSentence(pos, bm, "joueur") end
         end
-        local ft = UI.face(15)
         local px = mg * 3
-        for _, l in ipairs(UI.wrap(ft, text, W - 2 * px)) do
-            if y > self.H - UI.lineHeight(ft) then break end
-            UI.text(bb, ft, l, px, y)
-            y = y + UI.lineHeight(ft)
-        end
+        if text ~= self._last_text then self._last_text = text; self.page = 1 end
+        self:pagedText(bb, UI.face(15), text, px, y, W - 2 * px)
     end
 
     function ExScreen:go(dir)
