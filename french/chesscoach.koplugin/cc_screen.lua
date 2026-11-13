@@ -700,6 +700,24 @@ function GameScreen:showMenu()
     elseif m:ended() and self.actions.newGame then
         buttons[#buttons + 1] = item("Nouvelle partie", function() self.actions.newGame() end)
     end
+    local app = self.actions.app
+    if app then
+        -- rejouer contre l'IA à partir de la position affichée (revue de partie, coach…)
+        local canBranch = self.coach or m:ended()
+        if canBranch then
+            buttons[#buttons + 1] = item("Rejouer d'ici contre l'IA", function()
+                local pos = m.positions[self:displayIdx() + 1] or m:viewPos()
+                app:playFromPosition(pos:fen(), m.g.player_color,
+                    "Entraînement" .. (m.g.label_short and (" — " .. m.g.label_short) or (m.g.label and (" — " .. m.g.label) or "")))
+            end)
+        end
+        if self.coach then
+            buttons[#buttons + 1] = item("Mes erreurs à retravailler", function() app:openMistakes() end)
+        end
+        buttons[#buttons + 1] = item("Thème de l'échiquier", function()
+            app:openThemes(function() self:refresh("ui") end)
+        end)
+    end
     buttons[#buttons + 1] = item("Retourner l'échiquier", function()
         self.flipped = not self.flipped
         self:refresh("ui")
@@ -715,7 +733,7 @@ function GameScreen:askElo()
     local m = self.match
     UIManager:show(SpinWidget:new{
         title_text = "Niveau de l'IA (Elo)",
-        info_text = "400 : débutant\n1000 : joueur occasionnel\n1500 : bon joueur de club\n2000 : expert\n2500 : maître",
+        info_text = "Calibré sur de vraies parties Lichess.\n400 : débutant\n1000 : joueur occasionnel\n1500 : bon joueur de club\n2000 : expert\n2500 : maître",
         value = m.g.opp.elo, value_min = AI.MIN_ELO, value_max = AI.MAX_ELO,
         value_step = 50, value_hold_step = 200, ok_text = "Valider", cancel_text = "Annuler",
         callback = function(spin)

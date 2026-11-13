@@ -7,11 +7,16 @@ local ButtonDialog = require("ui/widget/buttondialog")
 local UIManager = require("ui/uimanager")
 
 local AI = require("cc_ai")
+local Board = require("cc_board")
 local Career = require("cc_career")
 local GameScreen = require("cc_screen")
 local Match = require("cc_match")
 local Menus = require("cc_menus")
 local T = require("cc_tournament")
+local Problems = require("cc_problems")
+local Mistakes = require("cc_mistakes")
+local DuelMod = require("cc_duel")
+local Lichess = require("cc_lichess")
 
 local App = {}
 App.__index = App
@@ -37,7 +42,12 @@ function App.new(opts)
     self.data = (opts.load and opts.load()) or {}
     self:_migrate()
     self.profile = self.data.profile
+    Board.current = self.profile.board_theme or "gris"
     self.career = Career.ensure(self.data, self.rnd)
+    self._loadPolgar = opts.loadPolgar
+    self._tokenFile = opts.tokenFile
+    self._whenOnline = opts.whenOnline
+    Lichess.CAFILE = opts.cafile
     self.opened = {}
     return self
 end
@@ -72,6 +82,64 @@ function App:_migrate()
     end
     d.game = nil
     d.version = 2
+    if not d.fr then
+        App.translateSave(d)
+        d.fr = true
+    end
+end
+
+---------------------------------------------------------------------------
+-- Ancienne sauvegarde de la version anglaise : on traduit les textes enregistrés
+---------------------------------------------------------------------------
+
+local FR_EXACT = {
+    ["You"] = "Vous",
+    ["opponent resigned"] = "abandon de l'adversaire",
+    ["resignation"] = "abandon",
+    ["checkmate"] = "échec et mat",
+    ["stalemate"] = "pat",
+    ["insufficient material"] = "matériel insuffisant",
+    ["50-move rule"] = "règle des 50 coups",
+    ["threefold repetition"] = "triple répétition",
+    ["time out, insufficient material"] = "temps écoulé, matériel insuffisant",
+    ["lost on time"] = "temps écoulé",
+    ["opponent ran out of time"] = "temps écoulé pour l'adversaire",
+    ["draw by agreement"] = "nulle par accord",
+    ["Casual game — blitz 3 + 5"] = "Partie libre — blitz 3 + 5",
+    ["Casual game — rapid 10 + 5"] = "Partie libre — rapide 10 + 5",
+    ["Casual game — no clock"] = "Partie libre — sans pendule",
+    ["Candidates Tournament"] = "Tournoi des candidats",
+    ["World Championship"] = "Championnat du monde",
+    ["World Champion"] = "Champion du monde",
+}
+local FR_CITY = { Brussels = "Bruxelles", London = "Londres" }
+
+local function frText(v)
+    if FR_EXACT[v] then return FR_EXACT[v] end
+    local out = v
+    out = out:gsub("^Analysis — ", "Analyse — ")
+    out = out:gsub("%f[%w]You%f[%W]", "Vous"):gsub("%f[%w]You$", "Vous")
+    out = out:gsub("^(.-) Open", function(c) return "Open de " .. (FR_CITY[c] or c) end)
+    out = out:gsub("^Candidates Tournament", "Tournoi des candidats")
+    out = out:gsub("^World Championship", "Championnat du monde")
+    out = out:gsub(" — round (%d+)$", " — ronde %1"):gsub(" — game (%d+)$", " — partie %1")
+    out = out:gsub(" — tiebreak$", " — départage")
+    return out
+end
+
+local TEXT_KEYS = { name = true, label = true, reason = true, title = true, label_short = true,
+    white = true, black = true, opp = true }
+
+function App.translateSave(t, depth)
+    depth = depth or 0
+    if depth > 12 or type(t) ~= "table" then return end
+    for k, v in pairs(t) do
+        if type(v) == "string" and TEXT_KEYS[k] then
+            t[k] = frText(v)
+        elseif type(v) == "table" then
+            App.translateSave(v, depth + 1)
+        end
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -107,10 +175,175 @@ function App:openMain()
 end
 
 function App:openHub() self:push(Menus.Hub:new{ app = self }) end
+
+function App:openThemes(onChange) self:push(Menus.Themes:new{ app = self, onChange = onChange }) end
+
+function App:setBoardTheme(id)
+    self.profile.board_theme = id
+    Board.current = id
+    self:save()
+end
 function App:openShelf() self:push(Menus.Shelf:new{ app = self }) end
 function App:openProfile() self:push(Menus.Profile:new{ app = self }) end
 function App:openFree() self:push(Menus.Free:new{ app = self }) end
+
+---------------------------------------------------------------------------
+-- En ligne (Lichess)
+---------------------------------------------------------------------------
+
+function App:lichessScreens()
+    if not self._lscreens then self._lscreens = Lichess.screens() end
+    return self._lscreens
+end
+
+-- La clé Lichess : celle enregistrée, sinon celle du fichier settings/lichess_token.txt
+function App:lichessToken()
+    local t = self.profile.lichess_token
+    if t and t ~= "" then return t end
+    if self._tokenFile then
+        local f = io.open(self._tokenFile, "r")
+        if f then
+            local txt = f:read("*a") or ""
+            f:close()
+            txt = txt:match("(lip_[%w_%-]+)") or txt:gsub("%s", "")
+            if txt ~= "" then return txt end
+        end
+    end
+    return nil
+end
+
+function App:setLichessToken(t)
+    self.profile.lichess_token = t
+    self:save()
+end
+
+-- Exécute fn une fois le Wi-Fi allumé
+function App:whenOnline(fn)
+    if self._whenOnline then return self._whenOnline(fn) end
+    fn()
+end
+
+function App:openOnline()
+    self:push(self:lichessScreens().Hub:new{ app = self })
+end
+
+function App:openOnlineGame(session, onDone)
+    self:push(self:lichessScreens().Game:new{ app = self, session = session, onDone = onDone })
+end
+
+---------------------------------------------------------------------------
+-- Duel local (deux joueurs sur la même liseuse)
+---------------------------------------------------------------------------
+
+function App:duelScreens()
+    if not self._dscreens then self._dscreens = DuelMod.screens() end
+    return self._dscreens
+end
+
+function App:openDuel()
+    self.duel_setup = self:push(self:duelScreens().Setup:new{ app = self })
+end
+
+function App:startDuel(cadence)
+    self.data.duel = DuelMod.newGame(cadence)
+    self:save()
+    self:openDuelGame(self.data.duel)
+end
+
+function App:openDuelGame(g)
+    local sc = self:duelScreens().Game:new{ app = self, game = g }
+    local setup = self.duel_setup
+    local prev = sc.onClose
+    sc.onClose = function(me)
+        if prev then prev(me) end
+        if setup and not setup.closed then setup:refresh("ui") end
+    end
+    self:push(sc)
+end
 function App:openTournament() self:push(Menus.Tournament:new{ app = self }) end
+
+---------------------------------------------------------------------------
+-- Problèmes de mat (Polgár)
+---------------------------------------------------------------------------
+
+function App:problemsData()
+    if not self.data.problems or not self.data.problems.imported then
+        local old = self._loadPolgar and self._loadPolgar() or nil
+        Problems.ensure(self.data, old or {})
+        self:save()
+    end
+    return self.data.problems
+end
+
+function App:problemScreens()
+    if not self._pscreens then self._pscreens = Problems.screens() end
+    return self._pscreens
+end
+
+function App:openProblems()
+    self:problemsData()
+    self:push(self:problemScreens().Hub:new{ app = self })
+end
+
+---------------------------------------------------------------------------
+-- Mes erreurs (exercices tirés de vos parties)
+---------------------------------------------------------------------------
+
+function App:mistakeScreens()
+    if not self._mscreens then self._mscreens = Mistakes.screens() end
+    return self._mscreens
+end
+
+function App:openMistakes()
+    Mistakes.ensure(self.data)
+    self.mistakes_hub = self:push(self:mistakeScreens().Hub:new{ app = self })
+end
+
+function App:openMistake(i)
+    local hub = self.mistakes_hub
+    if hub and not hub.closed then hub:stopScan() end
+    local sc = self:mistakeScreens().Exercise:new{ app = self, index = i }
+    sc.onDone = function()
+        if hub and not hub.closed then
+            hub:refresh("ui")
+            hub:startScan()
+        end
+    end
+    self:push(sc)
+end
+
+-- Nouvelle partie d'entraînement contre l'IA à partir d'une position (non classée)
+function App:playFromPosition(fen, color, label)
+    local d = self.data
+    local function start()
+        if self.game_screen and not self.game_screen.closed then self.game_screen:close("none") end
+        local g = Match.newGame{ mode = "coach", player_color = color, start_fen = fen, opp = self:coachOpp(),
+            label = label or "Entraînement depuis une position" }
+        g.unrated = true
+        d.coach_game = g
+        self:save()
+        self:openGame(g, { newGame = function() self:newCoachGame() end })
+    end
+    local cg = d.coach_game
+    if cg and not cg.result and #cg.moves >= 2 and not cg.unrated then
+        local ConfirmBox = require("ui/widget/confirmbox")
+        UIManager:show(ConfirmBox:new{
+            text = "Votre partie en cours contre le coach sera remplacée par cette partie d'entraînement. Continuer ?",
+            ok_text = "Jouer", cancel_text = "Annuler", ok_callback = start,
+        })
+    else
+        start()
+    end
+end
+
+function App:openPuzzle(id)
+    if self.puzzle_screen and not self.puzzle_screen.closed then
+        self.puzzle_screen:load(id)
+        self.puzzle_screen:refresh("ui")
+        return
+    end
+    self.puzzle_screen = self:push(self:problemScreens().PuzzleScreen:new{ app = self, id = id })
+end
 
 ---------------------------------------------------------------------------
 -- Parties
@@ -131,6 +364,7 @@ function App:openGame(game, ctx)
     local match = self:makeMatch(game)
     local screen
     local actions = {
+        app = self,
         profile = self.profile,
         exit_label = ctx.exit_label,
         exit = function() screen:close("full") end,
@@ -380,7 +614,7 @@ function App:onGameFinished(match)
     local p = self.profile
     local rated
     if g.mode == "coach" then
-        rated = not g.takeback and match:playerMovesCount() >= 2
+        rated = not g.takeback and not g.unrated and match:playerMovesCount() >= 2
     elseif g.mode == "libre" then
         rated = match:playerMovesCount() >= 2
     else
