@@ -439,6 +439,16 @@ function Problems.screens()
         self:region(m, y, mw, s(52), function() app:openMistakes() end)
         y = y + s(62)
 
+        -- problèmes Lichess par thème
+        bb:paintBorder(m, y, mw, s(52), s(1), UI.BLACK, s(12))
+        UI.text(bb, UI.face(16, true), "Problèmes Lichess par thème", m + s(14), y + s(6))
+        local LPd = app.data.lpuzzles
+        UI.text(bb, UI.face(13), (LPd and LPd.rating) and ("Fourchettes, clouages, mats… · votre classement " .. LPd.rating)
+            or "Fourchettes, clouages, mats, finales… choisis par difficulté", m + s(14), y + s(30), UI.DIM)
+        UI.textRight(bb, UI.face(22), "›", m + mw - s(14), y + s(10), UI.GRAY)
+        self:region(m, y, mw, s(52), function() app:openLPuzzles() end)
+        y = y + s(62)
+
         -- reprendre
         local cur = P.current or 1
         local bw = W - 2 * m
@@ -513,8 +523,9 @@ function Problems.screens()
         self.mg = s(6)
         self.tool_h = s(46)
         local head = s(40) + s(30)
-        local panel = s(150)
-        local bs = math.min(self.W - 2 * self.mg, self.H - head - self.tool_h - panel)
+        local panel = s(64)
+        local bs = math.min(self.W, self.H - head - self.tool_h - panel)
+        bs = bs - bs % 8
         self.board = Board:new{ size = bs }
         self:load(self.id)
     end

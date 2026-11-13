@@ -27,11 +27,13 @@ PROBLÈMES (NOUVEAU)
   (László Polgár, le père de Judit, Susan et Sofia), en 10 chapitres :
   mat en 1, mat en 2, combinaisons en 2 et 3 coups, 600 parties miniatures,
   finales, combinaisons des sœurs Polgár…
+- La progression de l'ancienne appli « Puzzles d'échecs (Polgár) » est reprise
+  automatiquement (problèmes résolus et dernier problème ouvert).
 - Touchez une pièce puis sa case d'arrivée ; l'adversaire répond tout seul.
   Pour un mat, un autre coup que celui du livre est accepté s'il mate aussi
   dans le bon nombre de coups (Stockfish vérifie et défend).
 - « Indice » : la pièce à jouer, puis le coup. « Solution » : la solution
-  du livre. « Réessayer » : revenir avant votre dernier coup.
+  commentée du livre. « Réessayer » : revenir avant votre dernier coup.
 - ‹ › ou les boutons de page : problème précédent / suivant.
 - Dans la liste des chapitres : touchez un chapitre pour son premier problème
   non résolu, appui long pour repartir du début.
@@ -42,11 +44,24 @@ EN LIGNE · LICHESS (NOUVEAU)
   pas le blitz pour les applications externes). Partie classée ou amicale.
 - À faire une fois : sur lichess.org (ordinateur ou téléphone), ouvrez
   lichess.org/account/oauth/token/create, cochez seulement « Jouer des parties
-  avec l'API échiquier », créez la clé, puis copiez-la dans un fichier texte
+  avec l'API échiquier » (et, pour les problèmes, les deux cases qui parlent
+  de problèmes / « puzzle »), créez la clé, puis copiez-la dans un fichier texte
   lichess_token.txt placé dans .adds/koreader/settings (ou tapez-la dans l'appli).
   Le mot de passe n'est jamais demandé ; la clé se supprime sur lichess.org.
 - Pendant une partie en ligne, le coach et Stockfish sont coupés (règle de Lichess).
 - Si le Wi-Fi coupe, l'application se reconnecte toute seule et reprend la partie.
+
+PROBLÈMES LICHESS PAR THÈME (NOUVEAU)
+- Dans « Problèmes » (ou « En ligne »), touchez « Problèmes Lichess par thème ».
+- Choisissez un thème (fourchette, clouage, mat en 2, finale de tours…) et une
+  difficulté (de « Très facile » à « Très difficile », par rapport à votre
+  classement problèmes Lichess), puis « Commencer ».
+- Chaque résultat est envoyé à Lichess et compte pour votre classement
+  problèmes, comme sur le site : un mauvais coup, l'indice ou la solution
+  comptent comme un échec. « Réessayer » permet quand même de trouver la suite.
+- 15 problèmes sont gardés d'avance ; sans Wi-Fi, les résultats attendent et
+  partent à la prochaine connexion. Sans clé (ou sans la permission
+  « problèmes »), on peut jouer quand même, mais rien n'est enregistré.
 
 DUEL LOCAL (NOUVEAU)
 - Deux joueurs sur la même liseuse, posée à plat entre eux : les Blancs en bas,

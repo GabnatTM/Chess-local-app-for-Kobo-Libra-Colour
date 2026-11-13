@@ -227,6 +227,21 @@ function App:openOnline()
     self:push(self:lichessScreens().Hub:new{ app = self })
 end
 
+-- Problèmes Lichess par thème
+function App:lpuzzleScreens()
+    if not self._lpscreens then self._lpscreens = require("cc_lpuzzles").screens() end
+    return self._lpscreens
+end
+
+function App:openLPuzzles()
+    require("cc_lpuzzles").ensure(self.data)
+    self:push(self:lpuzzleScreens().Hub:new{ app = self })
+end
+
+function App:openLPuzzle(onDone)
+    self:push(self:lpuzzleScreens().Play:new{ app = self, onDone = onDone })
+end
+
 function App:openOnlineGame(session, onDone)
     self:push(self:lichessScreens().Game:new{ app = self, session = session, onDone = onDone })
 end

@@ -231,6 +231,32 @@ function Canvas:close(refresh)
 end
 
 -- En-tête commun : titre à gauche, bouton retour « ‹ » à gauche
+-- Texte sur plusieurs pages si la place manque (touchez la zone pour la suite)
+function Canvas:pagedText(bb, face, text, px, y, pw)
+    local lh = UI.lineHeight(face)
+    local lines = UI.wrap(face, text or "", pw)
+    local small = UI.face(13)
+    local fit = math.max(1, math.floor((self.H - y - UI.s(2)) / lh))
+    if #lines > fit then fit = math.max(1, math.floor((self.H - y - UI.s(2) - UI.lineHeight(small)) / lh)) end
+    local pages = math.max(1, math.ceil(#lines / fit))
+    self.page = self.page or 1
+    if self.page > pages then self.page = 1 end
+    local top = y
+    local first = (self.page - 1) * fit + 1
+    for i = first, math.min(#lines, first + fit - 1) do
+        UI.text(bb, face, lines[i], px, y)
+        y = y + lh
+    end
+    if pages > 1 then
+        UI.textRight(bb, small, "suite " .. self.page .. "/" .. pages .. " ▸", self.W - px,
+            self.H - UI.lineHeight(small) - UI.s(2), UI.GRAY)
+        self:region(0, top, self.W, self.H - top, function()
+            self.page = self.page % pages + 1
+            self:refresh("ui")
+        end)
+    end
+end
+
 function Canvas:header(bb, title, backLabel, onBack)
     local m = UI.s(10)
     local f = UI.face(15)
